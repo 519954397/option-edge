@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Option Edge · 商品期权买方决策台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b0e;
+      --surface: #0e1317;
+      --surface-2: #131a1f;
+      --surface-3: #182128;
+      --line: #253039;
+      --line-soft: #1b242b;
+      --text: #eef1ee;
+      --muted: #89959b;
+      --faint: #5f6b71;
+      --accent: #e8b65a;
+      --accent-soft: #2b2317;
+      --green: #63d3a4;
+      --green-soft: #10251d;
+      --red: #f07878;
+      --red-soft: #291618;
+      --blue: #72a8e8;
+      --silver: #bbc2d8;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 72% -10%, rgba(232,182,90,.08), transparent 32rem),
+        linear-gradient(180deg, #0a0e11 0, var(--bg) 26rem);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-variant-numeric: tabular-nums;
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    .app { width: min(1600px, 100%); margin: 0 auto; padding: 0 24px 44px; }
+    .topbar {
+      min-height: 78px; display: flex; align-items: center; justify-content: space-between;
+      gap: 22px; border-bottom: 1px solid var(--line-soft);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 38px; height: 38px; display: grid; place-items: center; flex: none;
+      border: 1px solid #705b33; border-radius: 11px; color: var(--accent);
+      background: linear-gradient(145deg, #211b12, #0f1316); font-weight: 800; letter-spacing: -.06em;
+    }
+    .eyebrow { color: var(--accent); font-size: 10px; letter-spacing: .18em; font-weight: 700; text-transform: uppercase; }
+    h1 { margin: 2px 0 0; font-size: 19px; line-height: 1.2; letter-spacing: -.02em; }
+    .top-actions { display: flex; align-items: center; gap: 12px; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; font-size: 12px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px currentColor; }
+    .dot.ok { background: var(--green); } .dot.error { background: var(--red); }
+    .icon-button {
+      border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 8px 12px;
+      cursor: pointer; transition: .18s ease;
+    }
+    .icon-button:hover { border-color: #4b5962; background: var(--surface-2); }
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 28px 0 12px; }
+    .section-head h2 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+    .section-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .updated { color: var(--faint); font-size: 11px; }
+    .market-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .market-card {
+      appearance: none; width: 100%; text-align: left; color: inherit; cursor: pointer;
+      padding: 17px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(24,33,40,.92), rgba(13,18,22,.96));
+      transition: transform .18s ease, border-color .18s ease;
+    }
+    .market-card:hover, .market-card.active { transform: translateY(-1px); border-color: #665632; }
+    .market-card-top, .quote-line, .candidate-top, .panel-head, .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .asset-name { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+    .asset-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+    .asset-gold .asset-dot { background: var(--accent); }
+    .asset-silver .asset-dot { background: var(--silver); }
+    .contract-code { color: var(--faint); font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+    .bias { padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+    .bias.bullish { color: var(--red); background: var(--red-soft); }
+    .bias.bearish { color: var(--green); background: var(--green-soft); }
+    .bias.neutral { color: var(--muted); background: #20282d; }
+    .quote-line { margin: 15px 0 14px; align-items: baseline; }
+    .market-price { font-size: 28px; font-weight: 650; letter-spacing: -.04em; }
+    .change { font-size: 12px; font-weight: 650; }
+    .change.up { color: var(--red); } .change.down { color: var(--green); }
+    .market-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+    .market-metric { border-top: 1px solid var(--line-soft); padding-top: 9px; min-width: 0; }
+    .market-metric span { display: block; color: var(--faint); font-size: 10px; white-space: nowrap; }
+    .market-metric strong { display: block; margin-top: 2px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+    .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(310px, .7fr); gap: 12px; margin-top: 12px; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: rgba(14,19,23,.92); overflow: hidden; }
+    .panel-head { padding: 16px 18px; border-bottom: 1px solid var(--line-soft); }
+    .panel-head h2 { margin: 0; font-size: 15px; }
+    .panel-head small { color: var(--muted); }
+    .candidate-list { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 1px; background: var(--line-soft); }
+    .candidate {
+      padding: 17px 18px; background: var(--surface); cursor: pointer; border: 0; text-align: left;
+      transition: background .15s ease;
+    }
+    .candidate:hover { background: var(--surface-2); }
+    .candidate-label { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .candidate-name { margin-top: 3px; font: 650 16px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .side { padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 800; }
+    .side.call { color: var(--red); background: var(--red-soft); }
+    .side.put { color: var(--green); background: var(--green-soft); }
+    .score-orb {
+      --score: 0; width: 46px; height: 46px; border-radius: 50%; flex: none; display: grid; place-items: center;
+      background: conic-gradient(var(--accent) calc(var(--score) * 1%), #253038 0);
+      position: relative; font-size: 11px; font-weight: 800;
+    }
+    .score-orb::before { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); }
+    .score-orb span { position: relative; }
+    .candidate:hover .score-orb::before { background: var(--surface-2); }
+    .candidate-metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin: 15px 0 12px; }
+    .candidate-metrics span { color: var(--faint); font-size: 10px; display: block; }
+    .candidate-metrics strong { display: block; margin-top: 2px; font-size: 12px; }
+    .signals { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 4px; }
+    .signal { height: 4px; background: #263138; border-radius: 5px; }
+    .signal.on { background: var(--green); }
+    .signal.off { background: #543036; }
+    .candidate-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 7px; }
+    .empty { padding: 42px 20px; color: var(--muted); text-align: center; grid-column: 1 / -1; background: var(--surface); }
+    .funnel { padding: 18px; }
+    .funnel-row { display: grid; grid-template-columns: 96px 1fr 44px; align-items: center; gap: 10px; margin: 13px 0; }
+    .funnel-row span { color: var(--muted); font-size: 11px; }
+    .track { height: 7px; background: #222c32; border-radius: 9px; overflow: hidden; }
+    .track i { display: block; height: 100%; width: var(--width); background: linear-gradient(90deg, #80632e, var(--accent)); border-radius: inherit; }
+    .funnel-row strong { text-align: right; font-size: 12px; }
+    .rule-box { margin: 8px 18px 18px; padding: 13px; background: var(--accent-soft); border: 1px solid #4a3b22; border-radius: 10px; }
+    .rule-box strong { display: block; color: var(--accent); font-size: 12px; margin-bottom: 5px; }
+    .rule-box p { margin: 0; color: #bbaa8e; font-size: 11px; }
+    .alert { display: none; margin-top: 12px; padding: 11px 13px; border: 1px solid #65373a; border-radius: 10px; background: var(--red-soft); color: #efb1b1; }
+    .alert.visible { display: block; }
+    .scanner { margin-top: 12px; }
+    .scanner-toolbar { padding: 14px 16px; display: flex; align-items: end; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--line-soft); }
+    .field { display: grid; gap: 5px; }
+    .field label { color: var(--faint); font-size: 10px; }
+    select, input {
+      min-height: 36px; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+      background: var(--surface-2); padding: 7px 9px; outline: none;
+    }
+    select:focus, input:focus { border-color: #765f33; }
+    .grade-tabs { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
+    .grade-tab {
+      border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted);
+      padding: 8px 10px; cursor: pointer;
+    }
+    .grade-tab.active { color: var(--text); border-color: var(--line); background: var(--surface-2); }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; min-width: 1120px; border-collapse: collapse; white-space: nowrap; }
+    th { color: var(--faint); background: #11171b; font-size: 10px; font-weight: 600; text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+    th:first-child, th:nth-child(2), td:first-child, td:nth-child(2) { text-align: left; }
+    td { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+    tbody tr { cursor: pointer; transition: background .12s ease; }
+    tbody tr:hover, tbody tr.selected { background: #172027; }
+    .instrument { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 650; }
+    .sub { display: block; margin-top: 2px; color: var(--faint); font-size: 9px; font-weight: 400; }
+    .grade { padding: 4px 7px; border-radius: 6px; font-size: 9px; font-weight: 800; letter-spacing: .03em; }
+    .grade.rec { color: #8ee2bd; background: var(--green-soft); }
+    .grade.watch { color: #f0c879; background: var(--accent-soft); }
+    .grade.reject { color: #9aa4a8; background: #20282d; }
+    .positive { color: var(--green); } .negative { color: var(--red); }
+    .load-more { display: block; width: calc(100% - 32px); margin: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); padding: 9px; cursor: pointer; }
+    .detail { display: none; margin-top: 12px; border: 1px solid #554727; border-radius: var(--radius); background: #10161a; overflow: hidden; }
+    .detail.visible { display: block; }
+    .detail-head { padding: 18px; border-bottom: 1px solid var(--line); align-items: flex-start; }
+    .detail-head h2 { margin: 3px 0 0; font: 700 19px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .detail-actions { display: flex; align-items: center; gap: 8px; }
+    .close-detail { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 20px; }
+    .detail-body { display: grid; grid-template-columns: 1.25fr .75fr; }
+    .detail-main, .detail-side { padding: 18px; }
+    .detail-side { border-left: 1px solid var(--line); background: rgba(7,10,12,.35); }
+    .score-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; }
+    .score-card { border: 1px solid var(--line-soft); border-radius: 9px; background: var(--surface); padding: 10px; }
+    .score-card-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+    .score-card strong { color: var(--text); font-size: 11px; }
+    .mini-track { height: 4px; border-radius: 5px; background: #253038; margin-top: 8px; overflow: hidden; }
+    .mini-track i { display: block; height: 100%; width: var(--width); background: var(--green); }
+    .quote-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+    .quote-metric { padding: 10px; border-top: 1px solid var(--line); }
+    .quote-metric span { color: var(--faint); font-size: 10px; display: block; }
+    .quote-metric strong { display: block; margin-top: 3px; }
+    .detail-side h3 { margin: 0 0 10px; font-size: 12px; }
+    .reason-list { margin: 0; padding: 0; list-style: none; }
+    .reason-list li { display: flex; gap: 8px; color: var(--muted); font-size: 11px; margin: 8px 0; }
+    .reason-list li::before { content: "•"; color: var(--accent); }
+    footer { color: var(--faint); font-size: 10px; line-height: 1.7; margin: 16px 2px 0; }
+    @media (max-width: 1050px) {
+      .market-grid { grid-template-columns: 1fr; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .market-metrics { grid-template-columns: repeat(4, minmax(90px,1fr)); }
+    }
+    @media (max-width: 720px) {
+      .app { padding: 0 13px 30px; }
+      .topbar { align-items: stretch; flex-direction: column; padding: 15px 0; gap: 12px; }
+      .top-actions { flex-direction: row; align-items: center; justify-content: space-between; gap: 7px; }
+      h1 { font-size: 18px; }
+      .market-card { overflow: hidden; }
+      .candidate-list { grid-template-columns: 1fr; }
+      .detail-body { grid-template-columns: 1fr; }
+      .detail-side { border-left: 0; border-top: 1px solid var(--line); }
+      .score-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .quote-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .market-metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">OE</div>
+        <div><div class="eyebrow">Buyer Intelligence</div><h1>商品期权买方决策台</h1></div>
+      </div>
+      <div class="top-actions">
+        <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">正在连接行情…</span></div>
+        <button id="refreshButton" class="icon-button" type="button">刷新数据</button>
+      </div>
+    </header>
+
+    <div id="errorBox" class="alert"></div>
+
+    <section aria-labelledby="marketTitle">
+      <div class="section-head">
+        <div><h2 id="marketTitle">市场状态</h2><p>方向、波动率与期权偏斜的组合视图</p></div>
+        <div id="updated" class="updated">—</div>
+      </div>
+      <div id="markets" class="market-grid"></div>
+    </section>
+
+    <section class="dashboard-grid" aria-label="买方候选概览">
+      <div class="panel">
+        <div class="panel-head">
+          <div><h2>优先候选</h2><small id="candidateHint">通过硬闸门并达到多指标共振</small></div>
+          <span id="candidateCount" class="grade watch">—</span>
+        </div>
+        <div id="candidates" class="candidate-list"></div>
+      </div>
+      <aside class="panel">
+        <div class="panel-head"><div><h2>扫描漏斗</h2><small>从全链到最终推荐</small></div></div>
+        <div id="funnel" class="funnel"></div>
+        <div class="rule-box">
+          <strong>推荐硬闸门</strong>
+          <p>14–60天 · |Delta| 0.35–0.60 · Theta≤2%/日 · 有效双边报价 · 买卖价差达标</p>
+        </div>
+      </aside>
+    </section>
+
+    <section id="scanner" class="panel scanner" aria-labelledby="scannerTitle">
+      <div class="panel-head">
+        <div><h2 id="scannerTitle">期权机会扫描器</h2><small id="counts">正在读取期权链</small></div>
+      </div>
+      <div class="scanner-toolbar">
+        <div id="gradeTabs" class="grade-tabs" role="tablist">
+          <button class="grade-tab active" data-grade="opportunity" type="button">机会</button>
+          <button class="grade-tab" data-grade="recommended" type="button">仅推荐</button>
+          <button class="grade-tab" data-grade="eligible" type="button">买方合格</button>
+          <button class="grade-tab" data-grade="all" type="button">可交易链</button>
+        </div>
+        <div class="field"><label for="asset">品种</label><select id="asset"><option value="all">全部</option><option value="oil">原油</option><option value="gold">黄金</option><option value="silver">白银</option></select></div>
+        <div class="field"><label for="side">方向</label><select id="side"><option value="all">Call + Put</option><option value="CALL">Call</option><option value="PUT">Put</option></select></div>
+        <div class="field"><label for="minScore">最低分</label><input id="minScore" type="number" min="0" max="100" value="0" style="width:76px"></div>
+        <div class="field"><label for="sort">排序</label><select id="sort"><option value="score_buyer">买方总分</option><option value="score_vol_value">波动价值</option><option value="score_efficiency">合约效率</option><option value="score_liquidity">流动性</option></select></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>评级</th><th>合约</th><th>方向</th><th>标的 / 行权价</th><th>DTE</th><th>Bid / Ask</th><th>IV / RV</th><th>Delta</th><th>Theta/日</th><th>5日情景</th><th>共振</th><th>买方分</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <button id="loadMore" class="load-more" type="button">显示更多</button>
+    </section>
+
+    <section id="detail" class="detail" aria-live="polite"></section>
+    <footer id="footnote">该页面用于研究排序，不连接券商，不自动下单。</footer>
+  </main>
+
+  <script>
+    const state = { snapshot: null, grade: 'opportunity', visible: 40, selected: null, refreshing: false };
+    const $ = id => document.getElementById(id);
+    const fmt = (value, digits = 2) => value === null || value === undefined || Number.isNaN(Number(value)) ? '—' : Number(value).toFixed(digits);
+    const signed = (value, digits = 1) => value === null || value === undefined ? '—' : `${Number(value) > 0 ? '+' : ''}${fmt(value, digits)}`;
+    const intFmt = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('zh-CN');
+    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    const assetClass = asset => asset === 'gold' ? 'asset-gold' : asset === 'silver' ? 'asset-silver' : 'asset-oil';
+    const gradeMeta = grade => ({RECOMMENDED:['A · 推荐','rec'], WATCH:['B · 观察','watch'], REJECT:['未通过','reject']})[grade] || ['—','reject'];
+    const biasMeta = bias => ({bullish:['偏多','bullish'], bearish:['偏空','bearish'], neutral:['中性','neutral']})[bias] || ['待确认','neutral'];
+    const pctClass = value => Number(value) >= 0 ? 'positive' : 'negative';
+
+    function renderStatus() {
+      const snap = state.snapshot || {};
+      const status = snap.status || 'starting';
+      $('statusDot').className = `dot ${status === 'ok' ? 'ok' : status === 'error' ? 'error' : ''}`;
+      const labels = {ok:'行情正常', partial:'部分行情', stale:'使用缓存', error:'连接失败', starting:'初始化'};
+      const time = snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString('zh-CN', {hour12:false}) : '—';
+      $('statusText').textContent = `${labels[status] || status} · ${time}`;
+      $('updated').textContent = snap.generated_at ? `本地刷新 ${time}` : '等待第一份快照';
+      const errors = [...(snap.errors || []), ...(snap.context_errors || [])];
+      $('errorBox').className = `alert ${snap.last_error || errors.length ? 'visible' : ''}`;
+      $('errorBox').textContent = snap.last_error || (errors.length ? `${errors.length} 个合约的数据上下文暂时不完整，其余结果仍可使用。` : '');
+    }
+
+    function renderMarkets() {
+      const items = state.snapshot?.summaries || [];
+      $('markets').innerHTML = items.map(item => {
+        const q = item.active || {}, bias = biasMeta(item.market_bias);
+        const change = q.change_pct;
+        return `<button class="market-card ${assetClass(item.asset)} ${$('asset').value === item.asset ? 'active' : ''}" data-asset="${escapeHtml(item.asset)}" type="button">
+          <div class="market-card-top"><div class="asset-name"><i class="asset-dot"></i>${escapeHtml(item.asset_name)} <span class="contract-code">${escapeHtml(q.contract || '—')}</span></div><span class="bias ${bias[1]}">${bias[0]}</span></div>
+          <div class="quote-line"><strong class="market-price">${fmt(q.price, item.asset === 'silver' ? 0 : 2)}</strong><span class="change ${Number(change) >= 0 ? 'up' : 'down'}">${signed(change,2)}%</span></div>
+          <div class="market-metrics">
+            <div class="market-metric"><span>ATM IV</span><strong>${fmt(item.atm_iv_pct,1)}%</strong></div>
+            <div class="market-metric"><span>预测 RV</span><strong>${fmt(item.forecast_rv_pct,1)}%</strong></div>
+            <div class="market-metric"><span>IV−RV</span><strong class="${Number(item.iv_rv_spread_pct) <= 0 ? 'positive' : ''}">${signed(item.iv_rv_spread_pct,1)}</strong></div>
+            <div class="market-metric"><span>RR25</span><strong>${signed(item.rr25_pct,1)}</strong></div>
+          </div>
+        </button>`;
+      }).join('') || '<div class="empty">市场摘要正在初始化</div>';
+      document.querySelectorAll('.market-card').forEach(card => card.addEventListener('click', () => {
+        $('asset').value = $('asset').value === card.dataset.asset ? 'all' : card.dataset.asset;
+        state.visible = 40; renderMarkets(); renderCandidates(); renderRows();
+        $('scanner').scrollIntoView({block:'start'});
+      }));
+    }
+
+    function candidateRows() {
+      const asset = $('asset').value;
+      const rows = state.snapshot?.options || [];
+      const scoped = rows.filter(row => asset === 'all' || row.asset === asset);
+      const recommended = scoped.filter(row => row.recommendation === 'RECOMMENDED');
+      return { rows: (recommended.length ? recommended : scoped.filter(row => row.recommendation === 'WATCH')).slice(0, 6), fallback: !recommended.length };
+    }
+
+    function renderCandidates() {
+      const result = candidateRows();
+      $('candidateHint').textContent = result.fallback ? '当前无A级推荐，展示最接近条件的观察候选' : '已通过硬闸门与核心指标共振';
+      $('candidateCount').textContent = result.fallback ? `${result.rows.length} 观察` : `${result.rows.length} 推荐`;
+      $('candidateCount').className = `grade ${result.fallback ? 'watch' : 'rec'}`;
+      $('candidates').innerHTML = result.rows.map(row => {
+        const grade = gradeMeta(row.recommendation), flags = Object.values(row.signal_flags || {});
+        return `<button class="candidate" type="button" data-instrument="${escapeHtml(row.instrument)}">
+          <div class="candidate-top"><div><div class="candidate-label">${escapeHtml(row.asset_name)} · ${row.days_to_expiry ?? '—'} DTE <span class="side ${row.option_type === 'CALL' ? 'call' : 'put'}">${row.option_type}</span></div><div class="candidate-name">${escapeHtml(row.instrument)}</div></div><div class="score-orb" style="--score:${Number(row.score_buyer || 0)}"><span>${fmt(row.score_buyer,0)}</span></div></div>
+          <div class="candidate-metrics"><div><span>IV − RV</span><strong class="${Number(row.vol_edge_pct) >= 0 ? 'positive' : 'negative'}">${row.vol_edge_pct === null ? '—' : signed(-Number(row.vol_edge_pct),1) + '点'}</strong></div><div><span>Theta负担</span><strong>${fmt(row.theta_burden_pct,2)}%</strong></div><div><span>${row.scenario_days || 5}日情景</span><strong class="${pctClass(row.scenario_roi_pct)}">${signed(row.scenario_roi_pct,0)}%</strong></div></div>
+          <div class="signals">${flags.map(flag => `<i class="signal ${flag ? 'on' : 'off'}"></i>`).join('')}</div>
+          <div class="candidate-foot"><span>${row.signal_count || 0}/6 指标共振</span><span>${grade[0]}</span></div>
+        </button>`;
+      }).join('') || '<div class="empty">当前筛选下没有通过买方闸门的候选</div>';
+      document.querySelectorAll('.candidate').forEach(card => card.addEventListener('click', () => selectRow(card.dataset.instrument)));
+    }
+
+    function renderFunnel() {
+      const c = state.snapshot?.counts || {};
+      const base = Math.max(Number(c.fetched || 0), 1);
+      const rows = [['全期权链',c.fetched],['可交易报价',c.eligible],['买方硬闸门',c.buyer_eligible],['观察候选',c.watch],['A级推荐',c.recommended]];
+      $('funnel').innerHTML = rows.map(([label,value]) => `<div class="funnel-row"><span>${label}</span><div class="track"><i style="--width:${Math.max(2, Number(value || 0) / base * 100)}%"></i></div><strong>${intFmt(value || 0)}</strong></div>`).join('');
+    }
+
+    function filteredRows() {
+      const asset = $('asset').value, side = $('side').value, minScore = Number($('minScore').value || 0), sort = $('sort').value;
+      return (state.snapshot?.options || []).filter(row => {
+        if (asset !== 'all' && row.asset !== asset) return false;
+        if (side !== 'all' && row.option_type !== side) return false;
+        if (Number(row.score_buyer || 0) < minScore) return false;
+        if (state.grade === 'opportunity' && !['RECOMMENDED','WATCH'].includes(row.recommendation)) return false;
+        if (state.grade === 'recommended' && row.recommendation !== 'RECOMMENDED') return false;
+        if (state.grade === 'eligible' && !row.buyer_eligible) return false;
+        return true;
+      }).sort((a,b) => Number(b[sort] || 0) - Number(a[sort] || 0));
+    }
+
+    function renderRows() {
+      const all = filteredRows(), visible = all.slice(0, state.visible);
+      $('counts').textContent = `筛选结果 ${intFmt(all.length)} · 全链 ${intFmt(state.snapshot?.counts?.fetched || 0)} · 买方合格 ${intFmt(state.snapshot?.counts?.buyer_eligible || 0)}`;
+      $('rows').innerHTML = visible.map(row => {
+        const grade = gradeMeta(row.recommendation), ivrv = row.forecast_rv_pct === null ? '—' : `${fmt(row.iv_pct,1)} / ${fmt(row.forecast_rv_pct,1)}`;
+        return `<tr data-instrument="${escapeHtml(row.instrument)}" class="${state.selected?.instrument === row.instrument ? 'selected' : ''}">
+          <td><span class="grade ${grade[1]}">${grade[0]}</span></td>
+          <td><span class="instrument">${escapeHtml(row.instrument)}</span><span class="sub">${escapeHtml(row.asset_name)} · ${escapeHtml(row.underlying)}</span></td>
+          <td><span class="side ${row.option_type === 'CALL' ? 'call' : 'put'}">${row.option_type}</span></td>
+          <td>${fmt(row.underlying_price,2)} / ${fmt(row.strike,2)}</td><td>${row.days_to_expiry ?? '—'}</td>
+          <td>${fmt(row.bid,2)} / ${fmt(row.ask,2)}<span class="sub">价差 ${fmt(row.spread_pct,1)}%</span></td>
+          <td>${ivrv}<span class="sub">ATM ${fmt(row.atm_iv_pct,1)}%</span></td><td>${fmt(row.delta,3)}</td>
+          <td>${fmt(row.theta_burden_pct,2)}%</td><td class="${pctClass(row.scenario_roi_pct)}">${signed(row.scenario_roi_pct,0)}%</td>
+          <td>${row.signal_count || 0}/6</td><td><strong>${fmt(row.score_buyer,1)}</strong></td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="12" class="empty">当前筛选没有候选；可以切换到“买方合格”或“可交易链”查看淘汰原因。</td></tr>';
+      document.querySelectorAll('#rows tr[data-instrument]').forEach(tr => tr.addEventListener('click', () => selectRow(tr.dataset.instrument)));
+      $('loadMore').style.display = all.length > state.visible ? 'block' : 'none';
+    }
+
+    function selectRow(instrument) {
+      state.selected = (state.snapshot?.options || []).find(row => row.instrument === instrument) || null;
+      renderRows(); renderDetail();
+      if (state.selected) $('detail').scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+
+    function renderDetail() {
+      const row = state.selected, box = $('detail');
+      if (!row) { box.className = 'detail'; box.innerHTML = ''; return; }
+      const grade = gradeMeta(row.recommendation);
+      const scores = [['方向共振',row.score_direction],['波动价值',row.score_vol_value],['波动启动',row.score_activation],['期限结构',row.score_term],['合约效率',row.score_efficiency],['流动性',row.score_liquidity]];
+      const metrics = [['买一 / 卖一',`${fmt(row.bid,2)} / ${fmt(row.ask,2)}`],['价差',`${fmt(row.spread_pct,2)}%`],['IV / ATM IV',`${fmt(row.iv_pct,1)}% / ${fmt(row.atm_iv_pct,1)}%`],['预测RV',`${fmt(row.forecast_rv_pct,1)}%`],['Delta / Gamma',`${fmt(row.delta,3)} / ${fmt(row.gamma,6)}`],['Theta / 日',`${fmt(row.theta_burden_pct,2)}%`],['盈亏平衡覆盖',`${fmt(row.breakeven_coverage,2)}x`],['持仓量',intFmt(row.open_interest)]];
+      const explanations = row.hard_blockers?.length ? row.hard_blockers : (row.reasons || []);
+      box.className = 'detail visible';
+      box.innerHTML = `<div class="detail-head"><div><div class="candidate-label">${escapeHtml(row.asset_name)} · ${row.option_type} · ${row.days_to_expiry ?? '—'} DTE</div><h2>${escapeHtml(row.instrument)}</h2></div><div class="detail-actions"><span class="grade ${grade[1]}">${grade[0]} · ${fmt(row.score_buyer,1)}</span><button id="closeDetail" class="close-detail" type="button" aria-label="关闭">×</button></div></div>
+        <div class="detail-body"><div class="detail-main"><div class="score-grid">${scores.map(([label,value]) => `<div class="score-card"><div class="score-card-top"><span>${label}</span><strong>${fmt(value,0)}</strong></div><div class="mini-track"><i style="--width:${Math.max(0,Math.min(100,Number(value || 0)))}%"></i></div></div>`).join('')}</div><div class="quote-grid">${metrics.map(([label,value]) => `<div class="quote-metric"><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></div>
+        <aside class="detail-side"><h3>${row.hard_blockers?.length ? '未通过原因' : '候选解释'}</h3><ul class="reason-list">${explanations.map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>没有额外警告</li>'}</ul></aside></div>`;
+      $('closeDetail').addEventListener('click', () => { state.selected = null; renderRows(); renderDetail(); });
+    }
+
+    function renderFootnote() {
+      const s = state.snapshot || {};
+      $('footnote').textContent = `${s.source || ''}。${s.model_note || ''} ${s.score_note || ''} 情景回报按当前IV、预测RV的0.75倍方向移动并计入半个退出价差估算，不代表实际收益。`;
+    }
+    function render() { renderStatus(); renderMarkets(); renderCandidates(); renderFunnel(); renderRows(); renderDetail(); renderFootnote(); }
+
+    async function refresh() {
+      if (state.refreshing) return;
+      state.refreshing = true; $('refreshButton').textContent = '刷新中…';
+      try {
+        const response = await fetch('/api/snapshot', {cache:'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        state.snapshot = await response.json();
+        if (state.selected) state.selected = state.snapshot.options.find(row => row.instrument === state.selected.instrument) || null;
+        render();
+      } catch (error) {
+        $('statusDot').className = 'dot error'; $('statusText').textContent = `读取失败 · ${error.message}`;
+      } finally { state.refreshing = false; $('refreshButton').textContent = '刷新数据'; }
+    }
+
+    $('refreshButton').addEventListener('click', refresh);
+    ['asset','side','minScore','sort'].forEach(id => $(id).addEventListener('input', () => { state.visible = 40; renderMarkets(); renderCandidates(); renderRows(); }));
+    $('gradeTabs').addEventListener('click', event => {
+      const button = event.target.closest('[data-grade]'); if (!button) return;
+      state.grade = button.dataset.grade; state.visible = 40;
+      document.querySelectorAll('.grade-tab').forEach(tab => tab.classList.toggle('active', tab === button)); renderRows();
+    });
+    $('loadMore').addEventListener('click', () => { state.visible += 60; renderRows(); });
+    refresh(); setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

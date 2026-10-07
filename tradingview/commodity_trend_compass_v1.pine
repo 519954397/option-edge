@@ -1,0 +1,190 @@
+//@version=6
+indicator("商品趋势罗盘 v1｜原油·黄金·白银", shorttitle = "商品趋势罗盘 v1", overlay = true, max_labels_count = 200)
+
+// 本指标用于研究、复盘和提醒，不构成投资建议。
+// 建议初始用法：1小时普通蜡烛图，4小时高周期过滤，等待收盘确认。
+
+// ───────────────────────── 1. 品种预设 ─────────────────────────
+string assetMode = input.string("自动识别", "品种预设", options = ["自动识别", "原油", "黄金", "白银", "手动"], group = "1. 品种与周期")
+string higherTimeframe = input.timeframe("240", "高周期过滤", tooltip = "建议在1小时图使用4小时（240）过滤。高周期必须大于图表周期。", group = "1. 品种与周期")
+string allowedDirection = input.string("多空都做", "允许方向", options = ["多空都做", "只做多", "只做空"], group = "1. 品种与周期")
+bool usePresetDefaults = input.bool(true, "使用品种预设参数", group = "1. 品种与周期")
+
+string symbolText = str.upper(syminfo.ticker + " " + syminfo.root + " " + syminfo.description)
+bool looksOil = str.contains(symbolText, "USOIL") or str.contains(symbolText, "UKOIL") or str.contains(symbolText, "WTI") or str.contains(symbolText, "BRENT") or str.contains(symbolText, "XTI") or str.contains(symbolText, "XBR") or syminfo.root == "CL" or syminfo.root == "MCL" or syminfo.root == "BZ"
+bool looksGold = str.contains(symbolText, "XAU") or str.contains(symbolText, "GOLD") or syminfo.root == "GC" or syminfo.root == "MGC"
+bool looksSilver = str.contains(symbolText, "XAG") or str.contains(symbolText, "SILVER") or syminfo.root == "SI" or syminfo.root == "SIL"
+string detectedAsset = looksOil ? "原油" : looksGold ? "黄金" : looksSilver ? "白银" : "未知"
+string asset = assetMode == "自动识别" ? detectedAsset : assetMode == "手动" ? "手动" : assetMode
+bool supportedAsset = asset != "未知"
+bool allowLong = allowedDirection != "只做空"
+bool allowShort = allowedDirection != "只做多"
+
+// ───────────────────────── 2. 趋势与突破 ─────────────────────────
+int manualFastLength = input.int(50, "当前周期快EMA", minval = 5, maxval = 200, group = "2. 趋势与突破")
+int manualSlowLength = input.int(200, "当前周期慢EMA", minval = 20, maxval = 500, group = "2. 趋势与突破")
+int manualBreakoutLength = input.int(20, "Donchian突破长度", minval = 5, maxval = 100, group = "2. 趋势与突破")
+int diLength = input.int(14, "DMI长度", minval = 5, maxval = 50, group = "2. 趋势与突破")
+int adxSmoothing = input.int(14, "ADX平滑", minval = 5, maxval = 50, group = "2. 趋势与突破")
+float manualMinAdx = input.float(22.0, "最低ADX", minval = 5, maxval = 60, step = 0.5, group = "2. 趋势与突破")
+bool requireAdxRising = input.bool(false, "要求ADX正在上升", tooltip = "打开后信号更少、更严格。", group = "2. 趋势与突破")
+
+int fastLength = manualFastLength
+int slowLength = manualSlowLength
+int breakoutLength = usePresetDefaults ? (asset == "白银" ? 28 : asset == "黄金" ? 24 : asset == "原油" ? 20 : manualBreakoutLength) : manualBreakoutLength
+float minAdx = usePresetDefaults ? (asset == "白银" ? 24.0 : asset == "黄金" ? 21.0 : asset == "原油" ? 23.0 : manualMinAdx) : manualMinAdx
+
+float fastEma = ta.ema(close, fastLength)
+float slowEma = ta.ema(close, slowLength)
+
+// 只使用上一根已经收盘的高周期K线，避免把未完成的高周期数据带入历史信号。
+float htfFast = request.security(syminfo.tickerid, higherTimeframe, ta.ema(close, fastLength)[1], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+float htfSlow = request.security(syminfo.tickerid, higherTimeframe, ta.ema(close, slowLength)[1], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+float htfSlowPrevious = request.security(syminfo.tickerid, higherTimeframe, ta.ema(close, slowLength)[2], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+bool htfIsHigher = timeframe.in_seconds(higherTimeframe) > timeframe.in_seconds()
+
+[diPlus, diMinus, adx] = ta.dmi(diLength, adxSmoothing)
+float priorUpper = ta.highest(high, breakoutLength)[1]
+float priorLower = ta.lowest(low, breakoutLength)[1]
+
+bool htfBull = htfFast > htfSlow and htfSlow > htfSlowPrevious
+bool htfBear = htfFast < htfSlow and htfSlow < htfSlowPrevious
+bool localBull = close > fastEma and fastEma > slowEma and diPlus > diMinus
+bool localBear = close < fastEma and fastEma < slowEma and diMinus > diPlus
+bool adxOk = adx >= minAdx and (not requireAdxRising or adx > adx[1])
+
+// ───────────────────────── 3. 波动与事件过滤 ───────────────────────
+int atrLength = input.int(14, "ATR长度", minval = 5, maxval = 50, group = "3. 波动与事件过滤")
+float manualStopAtr = input.float(2.0, "止损ATR倍数", minval = 0.5, maxval = 6, step = 0.1, group = "3. 波动与事件过滤")
+float maxSignalBarAtr = input.float(1.8, "最大信号K线/ATR", minval = 0.5, maxval = 5, step = 0.1, tooltip = "突破K线过大时不追单。", group = "3. 波动与事件过滤")
+float maxDistanceAtr = input.float(2.2, "价格距快EMA最大ATR", minval = 0.5, maxval = 8, step = 0.1, group = "3. 波动与事件过滤")
+float maxAtrExpansion = input.float(1.8, "ATR异常扩张上限", minval = 1, maxval = 5, step = 0.1, tooltip = "当前ATR相对50周期ATR均值的最大倍数。", group = "3. 波动与事件过滤")
+bool useVolumeFilter = input.bool(false, "要求成交量高于20周期均量", tooltip = "现货/CFD成交量可能只代表数据商，因此默认关闭。", group = "3. 波动与事件过滤")
+bool pauseEiaWindow = input.bool(true, "原油：常规EIA窗口暂停新信号", tooltip = "常规窗口为纽约时间周三10:00-11:00；节假日顺延仍需人工确认。", group = "3. 波动与事件过滤")
+bool manualPause = input.bool(false, "手动暂停新信号", group = "3. 波动与事件过滤")
+
+float atr = ta.atr(atrLength)
+float atrAverage = ta.sma(atr, 50)
+float atrExpansion = atrAverage > 0 ? atr / atrAverage : 1.0
+float candleRangeAtr = atr > 0 ? (high - low) / atr : 0.0
+float distanceFromFastAtr = atr > 0 ? math.abs(close - fastEma) / atr : 0.0
+float averageVolume = ta.sma(volume, 20)
+bool volumeOk = not useVolumeFilter or na(volume) or na(averageVolume) or volume > averageVolume
+bool volatilityOk = candleRangeAtr <= maxSignalBarAtr and distanceFromFastAtr <= maxDistanceAtr and atrExpansion <= maxAtrExpansion
+bool regularEiaWindow = not na(time(timeframe.period, "1000-1100:4", "America/New_York"))
+bool eiaPaused = pauseEiaWindow and asset == "原油" and regularEiaWindow
+bool riskGateOpen = not manualPause and not eiaPaused
+
+float stopAtr = usePresetDefaults ? (asset == "白银" ? 2.3 : asset == "黄金" ? 1.9 : asset == "原油" ? 2.2 : manualStopAtr) : manualStopAtr
+float setupDistanceAtr = input.float(0.50, "准备提示距突破线ATR", minval = 0.1, maxval = 3, step = 0.05, group = "3. 波动与事件过滤")
+
+// ───────────────────────── 4. 信号状态机 ─────────────────────────
+bool dataReady = supportedAsset and htfIsHigher and not na(priorUpper) and not na(priorLower) and not na(htfSlowPrevious) and atr > 0
+bool longConditions = dataReady and allowLong and htfBull and localBull and adxOk and volatilityOk and volumeOk and riskGateOpen
+bool shortConditions = dataReady and allowShort and htfBear and localBear and adxOk and volatilityOk and volumeOk and riskGateOpen
+bool longBreakout = ta.crossover(close, priorUpper)
+bool shortBreakout = ta.crossunder(close, priorLower)
+bool longSignal = barstate.isconfirmed and longConditions and longBreakout
+bool shortSignal = barstate.isconfirmed and shortConditions and shortBreakout
+// “候多/候空”只表示多周期条件刚刚对齐；真正的执行节点仍需等待“关键做多/关键做空”。
+bool longBiasStart = barstate.isconfirmed and longConditions and not longConditions[1]
+bool shortBiasStart = barstate.isconfirmed and shortConditions and not shortConditions[1]
+
+bool nearUpper = atr > 0 and close < priorUpper and priorUpper - close <= atr * setupDistanceAtr
+bool nearLower = atr > 0 and close > priorLower and close - priorLower <= atr * setupDistanceAtr
+bool longPreparing = barstate.isconfirmed and longConditions and nearUpper
+bool shortPreparing = barstate.isconfirmed and shortConditions and nearLower
+bool longPrepareSignal = longPreparing and not longPreparing[1]
+bool shortPrepareSignal = shortPreparing and not shortPreparing[1]
+
+var int tradeState = 0
+var int entryBar = na
+var float activeEntry = na
+var float activeStop = na
+var float activeTarget1 = na
+var float activeTarget2 = na
+
+bool canEvaluateExit = tradeState != 0 and not na(entryBar) and bar_index > entryBar
+bool longExit = canEvaluateExit and tradeState == 1 and (low <= activeStop or high >= activeTarget2 or ta.crossunder(close, fastEma) or not htfBull)
+bool shortExit = canEvaluateExit and tradeState == -1 and (high >= activeStop or low <= activeTarget2 or ta.crossover(close, fastEma) or not htfBear)
+bool exitSignal = barstate.isconfirmed and (longExit or shortExit)
+
+// 使用平铺式状态更新，便于在TradingView桌面编辑器中无损粘贴。
+tradeState := longSignal ? 1 : shortSignal ? -1 : exitSignal ? 0 : tradeState
+entryBar := longSignal or shortSignal ? bar_index : exitSignal ? na : entryBar
+activeEntry := longSignal or shortSignal ? close : exitSignal ? na : activeEntry
+activeStop := longSignal ? close - atr * stopAtr : shortSignal ? close + atr * stopAtr : exitSignal ? na : activeStop
+activeTarget1 := longSignal ? close + atr * stopAtr : shortSignal ? close - atr * stopAtr : exitSignal ? na : activeTarget1
+activeTarget2 := longSignal ? close + atr * stopAtr * 2.0 : shortSignal ? close - atr * stopAtr * 2.0 : exitSignal ? na : activeTarget2
+
+// ───────────────────────── 5. 图表显示 ───────────────────────────
+color biasColor = htfBull ? color.new(color.lime, 94) : htfBear ? color.new(color.red, 94) : color.new(color.gray, 96)
+bgcolor(riskGateOpen ? biasColor : color.new(color.orange, 88), title = "多空背景")
+
+fastPlot = plot(fastEma, "快EMA", color = color.new(color.aqua, 0), linewidth = 2)
+slowPlot = plot(slowEma, "慢EMA", color = color.new(color.orange, 0), linewidth = 2)
+fill(fastPlot, slowPlot, color = fastEma > slowEma ? color.new(color.green, 92) : color.new(color.red, 92), title = "EMA趋势带")
+plot(priorUpper, "前期突破高点", color = color.new(color.green, 25), linewidth = 2, style = plot.style_linebr)
+plot(priorLower, "前期突破低点", color = color.new(color.red, 25), linewidth = 2, style = plot.style_linebr)
+
+plot(tradeState != 0 ? activeEntry : na, "参考入场", color = color.new(color.blue, 0), linewidth = 2, style = plot.style_linebr)
+plot(tradeState != 0 ? activeStop : na, "ATR止损", color = color.new(color.red, 0), linewidth = 2, style = plot.style_linebr)
+plot(tradeState != 0 ? activeTarget1 : na, "1R目标", color = color.new(color.yellow, 0), linewidth = 1, style = plot.style_linebr)
+plot(tradeState != 0 ? activeTarget2 : na, "2R目标", color = color.new(color.lime, 0), linewidth = 2, style = plot.style_linebr)
+
+plotshape(longBiasStart and not longSignal, title = "多头条件对齐", style = shape.triangleup, location = location.belowbar, color = color.new(color.lime, 10), size = size.small, text = "候多", textcolor = color.black)
+plotshape(shortBiasStart and not shortSignal, title = "空头条件对齐", style = shape.triangledown, location = location.abovebar, color = color.new(color.red, 10), size = size.small, text = "候空", textcolor = color.white)
+plotshape(longPrepareSignal, title = "多头突破准备", style = shape.circle, location = location.belowbar, color = color.yellow, size = size.small, text = "备多", textcolor = color.black)
+plotshape(shortPrepareSignal, title = "空头突破准备", style = shape.circle, location = location.abovebar, color = color.yellow, size = size.small, text = "备空", textcolor = color.black)
+plotshape(longSignal, title = "关键做多", style = shape.labelup, location = location.belowbar, color = color.lime, size = size.large, text = "关键做多", textcolor = color.black)
+plotshape(shortSignal, title = "关键做空", style = shape.labeldown, location = location.abovebar, color = color.red, size = size.large, text = "关键做空", textcolor = color.white)
+plotshape(exitSignal, title = "退出提示", style = shape.labeldown, location = location.abovebar, color = color.orange, size = size.small, text = "退出", textcolor = color.black)
+
+// 供告警占位符或数据窗口读取的隐藏数值。
+plot(longSignal or shortSignal ? close : na, "信号价格", display = display.none)
+plot(longSignal or shortSignal ? (longSignal ? close - atr * stopAtr : close + atr * stopAtr) : na, "信号止损", display = display.none)
+plot(longSignal or shortSignal ? (longSignal ? close + atr * stopAtr * 2.0 : close - atr * stopAtr * 2.0) : na, "信号2R目标", display = display.none)
+
+// ───────────────────────── 6. 告警条件 ───────────────────────────
+alertcondition(longSignal, "收盘确认做多", "商品趋势罗盘｜做多｜{{exchange}}:{{ticker}}｜周期 {{interval}}｜收盘 {{close}}")
+alertcondition(shortSignal, "收盘确认做空", "商品趋势罗盘｜做空｜{{exchange}}:{{ticker}}｜周期 {{interval}}｜收盘 {{close}}")
+alertcondition(longBiasStart or shortBiasStart, "多空条件开始对齐", "商品趋势罗盘｜多空条件开始对齐｜{{exchange}}:{{ticker}}｜周期 {{interval}}｜收盘 {{close}}")
+alertcondition(longPrepareSignal or shortPrepareSignal, "突破准备", "商品趋势罗盘｜突破准备｜{{exchange}}:{{ticker}}｜周期 {{interval}}｜收盘 {{close}}")
+alertcondition(exitSignal, "退出提示", "商品趋势罗盘｜退出提示｜{{exchange}}:{{ticker}}｜周期 {{interval}}｜收盘 {{close}}")
+
+// ───────────────────────── 7. 中文仪表盘 ─────────────────────────
+string htfText = not htfIsHigher ? "周期设置错误" : htfBull ? "多头" : htfBear ? "空头" : "震荡"
+string localText = localBull ? "多头" : localBear ? "空头" : "混合"
+string breakoutText = close > priorUpper ? "向上突破" : close < priorLower ? "向下突破" : nearUpper or nearLower ? "接近突破" : "区间内"
+string volatilityText = volatilityOk ? "正常" : candleRangeAtr > maxSignalBarAtr ? "K线过大" : distanceFromFastAtr > maxDistanceAtr ? "离均线过远" : "ATR异常"
+string actionText = manualPause ? "手动暂停" : eiaPaused ? "EIA风险窗口" : longSignal ? "关键做多" : shortSignal ? "关键做空" : longPrepareSignal ? "备多" : shortPrepareSignal ? "备空" : longBiasStart ? "候多（勿急入）" : shortBiasStart ? "候空（勿急入）" : htfBull ? "只等做多触发" : htfBear ? "只等做空触发" : "观望"
+color htfColor = not htfIsHigher ? color.orange : htfBull ? color.new(color.green, 15) : htfBear ? color.new(color.red, 15) : color.new(color.gray, 40)
+color localColor = localBull ? color.new(color.green, 15) : localBear ? color.new(color.red, 15) : color.new(color.gray, 40)
+color actionColor = longSignal ? color.lime : shortSignal ? color.red : longPreparing or shortPreparing ? color.yellow : longBiasStart ? color.new(color.lime, 25) : shortBiasStart ? color.new(color.red, 25) : riskGateOpen ? color.new(color.gray, 50) : color.orange
+color panelColor = color.rgb(24, 35, 50)
+
+var table dashboard = table.new(position.top_right, 2, 12, border_width = 1)
+table.cell(dashboard, 0, 0, "商品趋势罗盘", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 0, "v1", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 0, 1, "品种", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 1, asset, text_color = supportedAsset ? color.white : color.yellow)
+table.cell(dashboard, 0, 2, "高周期方向", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 2, htfText, text_color = color.white, bgcolor = htfColor)
+table.cell(dashboard, 0, 3, "当前周期", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 3, localText, text_color = color.white, bgcolor = localColor)
+table.cell(dashboard, 0, 4, "ADX", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 4, str.tostring(adx, "#.0") + " / " + str.tostring(minAdx, "#.0"), bgcolor = adxOk ? color.new(color.green, 25) : color.new(color.gray, 55))
+table.cell(dashboard, 0, 5, "突破位置", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 5, breakoutText, text_color = color.white)
+table.cell(dashboard, 0, 6, "波动过滤", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 6, volatilityText, bgcolor = volatilityOk ? color.new(color.green, 35) : color.new(color.orange, 15))
+table.cell(dashboard, 0, 7, "当前动作", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 7, actionText, text_color = color.black, bgcolor = actionColor)
+table.cell(dashboard, 0, 8, "趋势线", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 8, "青=快EMA｜橙=慢EMA", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 0, 9, "突破线", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 9, "绿=上破｜红=下破", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 0, 10, "交易线", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 10, "蓝=入场｜红=止损", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 0, 11, "目标线", text_color = color.white, bgcolor = panelColor)
+table.cell(dashboard, 1, 11, "黄=1R｜绿=2R", text_color = color.white, bgcolor = panelColor)

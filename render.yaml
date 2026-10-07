@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: option-edge
+    runtime: docker
+    plan: free
+    healthCheckPath: /live
+    envVars:
+      - key: PORT
+        value: "8790"
+      - key: OPTION_RADAR_USERNAME
+        sync: false
+      - key: OPTION_RADAR_PASSWORD
+        sync: false

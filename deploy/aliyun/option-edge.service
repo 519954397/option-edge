@@ -1,0 +1,34 @@
+[Unit]
+Description=Option Edge buyer decision dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=optionedge
+Group=optionedge
+WorkingDirectory=/opt/option-edge
+EnvironmentFile=/etc/option-edge.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/option-edge/.venv/bin/python -m jin10_research option-radar --host 127.0.0.1 --port 8790 --refresh 10
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryHigh=1200M
+MemoryMax=1400M
+
+[Install]
+WantedBy=multi-user.target

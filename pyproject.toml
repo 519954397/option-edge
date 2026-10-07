@@ -1,0 +1,25 @@
+[project]
+name = "jin10-research"
+version = "0.2.0"
+description = "TradingView commodity strategy with Jin10 MCP and AI risk analysis"
+requires-python = ">=3.9"
+dependencies = [
+    "akshare>=1.18.63,<2",
+    "beautifulsoup4>=4.12,<5",
+    "lxml>=5,<7",
+    "requests>=2.31,<3",
+]
+
+[project.scripts]
+jin10-research = "jin10_research.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+jin10_research = ["*.html"]
+
+[tool.setuptools.packages.find]
+include = ["jin10_research*"]
+exclude = ["tests*"]
